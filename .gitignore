@@ -1,0 +1,31 @@
+# Build output
+bin/
+obj/
+
+# .NET / Visual Studio
+*.user
+*.suo
+*.userprefs
+.vs/
+artifacts/
+
+# Test results
+[Tt]est[Rr]esults/
+*.trx
+*.coverage
+*.coverage.xml
+coverage*.json
+coverage*.xml
+coverage*.info
+
+# Rider / JetBrains
+.idea/
+*.iml
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# NuGet (restore output; the committed NuGet.config is intentional)
+*.nupkg
+project.lock.json

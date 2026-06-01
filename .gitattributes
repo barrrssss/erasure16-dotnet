@@ -1,0 +1,14 @@
+# Normalize line endings: store text as LF in the repo, let Git handle the
+# working-tree EOL per platform. Keeps diffs and hashes stable across machines.
+* text=auto eol=lf
+
+# Explicit text types.
+*.cs        text eol=lf
+*.csproj    text eol=lf
+*.sln       text eol=crlf
+*.config    text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+.gitignore  text eol=lf
+.gitattributes text eol=lf
+.gitmodules text eol=lf

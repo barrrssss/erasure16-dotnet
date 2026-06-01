@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>Erasure16</RootNamespace>
+    <AssemblyName>Erasure16</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Description>Systematic Reed-Solomon erasure code over GF(2^16) with a Cauchy generator matrix. Abstract: shard bytes in, shard bytes out.</Description>
+  </PropertyGroup>
+
+</Project>
