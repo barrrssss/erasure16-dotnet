@@ -11,4 +11,10 @@
     <Description>Systematic Reed-Solomon erasure code over GF(2^16) with a Cauchy generator matrix. Abstract: shard bytes in, shard bytes out.</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- The differential decoder test drives the internal FullMatrix oracle via the
+         RecoveryAlgorithm seam; production callers only see the public Submatrix path. -->
+    <InternalsVisibleTo Include="Erasure16.Tests" />
+  </ItemGroup>
+
 </Project>

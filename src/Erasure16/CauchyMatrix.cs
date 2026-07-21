@@ -44,6 +44,18 @@ namespace Erasure16
         }
 
         /// <summary>
+        /// The generator coefficient of parity row <paramref name="p"/> (in <c>0..R-1</c>) at
+        /// data column <paramref name="j"/> (in <c>0..K-1</c>):
+        /// <c>inv(X_p XOR Y_j) = inv(p XOR (R + j))</c> (SPEC.md section 4). This is the single
+        /// Cauchy entry the submatrix decoder reads to build its <c>E x E</c> system without
+        /// materializing the full generator.
+        /// </summary>
+        internal static ushort ParityCoeff(int p, int j, int r)
+        {
+            return Gf16.Inv((ushort)(p ^ (r + j)));
+        }
+
+        /// <summary>
         /// Builds the K x K matrix whose rows are the generator rows for the given
         /// <paramref name="rowIndices"/> (shard indices). <paramref name="rowIndices"/>
         /// must have exactly K entries. Returns a row-major K x K array.
@@ -66,6 +78,17 @@ namespace Erasure16
         /// rows, but is guarded defensively).
         /// </summary>
         internal static ushort[][] Invert(ushort[][] matrix, int k)
+        {
+            return Invert(matrix, k, null);
+        }
+
+        /// <summary>
+        /// Inverts a square K x K matrix over GF(2^16), invoking <paramref name="onColumnDone"/>
+        /// (if non-null) with the 0-based column index after each of the <paramref name="k"/>
+        /// elimination columns completes. The callback lets a caller report smooth progress
+        /// through the <c>O(k^3)</c> inversion, which is otherwise a single opaque step.
+        /// </summary>
+        internal static ushort[][] Invert(ushort[][] matrix, int k, Action<int> onColumnDone)
         {
             // Work on a copy of the input augmented with the identity on the right.
             var a = new ushort[k][];
@@ -142,6 +165,8 @@ namespace Erasure16
                         iRow[j] ^= Gf16.Mul(factor, iPiv[j]);
                     }
                 }
+
+                onColumnDone?.Invoke(col);
             }
 
             return inv;

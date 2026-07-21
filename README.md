@@ -53,6 +53,9 @@ rs.Reconstruct(shards, present);
 // Rebuild only the missing data shards [0..K), leaving missing parity untouched.
 rs.ReconstructData(shards, present);
 
+// Optional progress for long decodes (drive a UI progress bar; throw to cancel):
+rs.ReconstructData(shards, present, (done, total) => UpdateBar(done, total));
+
 // True if the parity shards are consistent with the data shards.
 bool ok = rs.Verify(shards);
 
@@ -70,6 +73,12 @@ int    l = Gf16.Log(a);
 
 Invalid parameters, mismatched or odd shard lengths, and fewer than `K` present shards
 all throw `Erasure16Exception`.
+
+Reconstruction solves only the `E×E` system for the `E` missing data shards rather than
+inverting the full `K×K` matrix — byte-identical output, far less memory (`~E·K` vs `K²`),
+and time that scales with the loss rather than the whole encoded set. See
+[`docs/decoder-optimization.md`](docs/decoder-optimization.md) for the math, correctness
+argument, measured results, and the `ProgressListener` design.
 
 ## Build, test, generate vectors
 
