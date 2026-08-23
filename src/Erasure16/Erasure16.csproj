@@ -4,17 +4,39 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <RootNamespace>Erasure16</RootNamespace>
     <AssemblyName>Erasure16</AssemblyName>
+    <PackageId>Erasure16</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>barrrssss</Authors>
+    <Title>Erasure16</Title>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
     <Description>Systematic Reed-Solomon erasure code over GF(2^16) with a Cauchy generator matrix. Abstract: shard bytes in, shard bytes out.</Description>
+    <PackageTags>reed-solomon;erasure-coding;fec;forward-error-correction;gf16</PackageTags>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/barrrssss/erasure16-dotnet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/barrrssss/erasure16-dotnet.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>portable</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- The differential decoder test drives the internal FullMatrix oracle via the
          RecoveryAlgorithm seam; production callers only see the public Submatrix path. -->
     <InternalsVisibleTo Include="Erasure16.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" />
+    <None Include="..\..\NOTICE" Pack="true" PackagePath="\" />
+    <None Include="..\..\CHANGELOG.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

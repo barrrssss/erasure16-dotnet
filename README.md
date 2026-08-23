@@ -13,6 +13,15 @@ The normative contract is [`SPEC.md`](external/erasure16-spec/SPEC.md) in the
 `erasure16-spec` repository (included here as a submodule). This implementation follows
 it exactly and is verified byte-for-byte against the committed conformance vectors.
 
+Current package version: **0.1.0**. It implements specification version **0.1.0**.
+See [`CHANGELOG.md`](CHANGELOG.md) for release history.
+
+After the first NuGet release, install it with:
+
+```sh
+dotnet add package Erasure16 --version 0.1.0
+```
+
 ## Layout
 
 | Path | Purpose |
@@ -83,7 +92,6 @@ argument, measured results, and the `ProgressListener` design.
 ## Build, test, generate vectors
 
 ```sh
-# 0/0 build.
 dotnet build Erasure16.sln
 
 # Field laws + encode/reconstruct round-trips. With the submodule checked out,
@@ -107,3 +115,22 @@ To check out or update the submodule:
 ```sh
 git submodule update --init --recursive
 ```
+
+Create the NuGet and symbol packages locally with:
+
+```sh
+dotnet pack src/Erasure16/Erasure16.csproj -c Release
+```
+
+The package includes its README, license, notice, XML documentation, repository
+metadata, and portable symbols. Publication is a deliberate manual step; this
+repository does not define CI.
+
+## Status
+
+Pre-1.0 release candidate. The library is intentionally general-purpose and defines
+only shard-level coding behavior.
+
+## License
+
+[Apache License 2.0](LICENSE), matching the specification and Java implementation.
