@@ -86,7 +86,7 @@ namespace Erasure16.Tests
             }
 
             JsonElement root = LoadManifestRoot();
-            Assert.True(root.TryGetProperty("manifestVersion", out _));
+            Assert.Equal(2, root.GetProperty("manifestVersion").GetInt32());
             Assert.True(root.TryGetProperty("field", out _));
             Assert.True(root.TryGetProperty("encode", out _));
             Assert.True(root.TryGetProperty("reconstruct", out _));
@@ -174,18 +174,13 @@ namespace Erasure16.Tests
                 int r = caseEl.GetProperty("r").GetInt32();
                 int shardLen = caseEl.GetProperty("shardLen").GetInt32();
 
-                var dataPaths = ReadStringArray(caseEl.GetProperty("dataShards"));
-                var parityPaths = ReadStringArray(caseEl.GetProperty("parityShards"));
-
-                Assert.Equal(k, dataPaths.Count);
-                Assert.Equal(r, parityPaths.Count);
+                byte[][] data = LoadPart(caseEl, "dataShards", "dataBlob", k, shardLen);
+                byte[][] expectedParity = LoadPart(caseEl, "parityShards", "parityBlob", r, shardLen);
 
                 var shards = new byte[k + r][];
                 for (int i = 0; i < k; i++)
                 {
-                    byte[] d = LoadBin(dataPaths[i]);
-                    Assert.Equal(shardLen, d.Length);
-                    shards[i] = d;
+                    shards[i] = data[i];
                 }
 
                 for (int p = 0; p < r; p++)
@@ -195,11 +190,10 @@ namespace Erasure16.Tests
 
                 ReedSolomon16.Create(k, r).Encode(shards);
 
-                // The recomputed parity must equal the stored parity .bin files byte-for-byte.
+                // The recomputed parity must equal the stored parity bytes byte-for-byte.
                 for (int p = 0; p < r; p++)
                 {
-                    byte[] expected = LoadBin(parityPaths[p]);
-                    Assert.Equal(expected, shards[k + p]);
+                    Assert.Equal(expectedParity[p], shards[k + p]);
                 }
             }
 
@@ -225,24 +219,33 @@ namespace Erasure16.Tests
                 int shardLen = caseEl.GetProperty("shardLen").GetInt32();
                 int n = k + r;
 
-                var present = new List<bool>();
-                foreach (JsonElement p in caseEl.GetProperty("present").EnumerateArray())
-                {
-                    present.Add(p.GetBoolean());
-                }
-
-                Assert.Equal(n, present.Count);
-
-                var expectedPaths = ReadStringArray(caseEl.GetProperty("expectedShards"));
-                Assert.Equal(n, expectedPaths.Count);
+                bool[] present = PresentMask(caseEl, n);
 
                 // Load the full expected set, then erase the not-present shards as input.
                 var expected = new byte[n][];
-                for (int i = 0; i < n; i++)
+                if (caseEl.TryGetProperty("expectedShards", out JsonElement expectedList))
                 {
-                    byte[] e = LoadBin(expectedPaths[i]);
-                    Assert.Equal(shardLen, e.Length);
-                    expected[i] = e;
+                    var expectedPaths = ReadStringArray(expectedList);
+                    Assert.Equal(n, expectedPaths.Count);
+                    for (int i = 0; i < n; i++)
+                    {
+                        expected[i] = LoadBin(expectedPaths[i]);
+                        Assert.Equal(shardLen, expected[i].Length);
+                    }
+                }
+                else
+                {
+                    byte[][] data = LoadPart(caseEl, "expectedShards", "expectedDataBlob", k, shardLen);
+                    byte[][] parity = LoadPart(caseEl, "expectedShards", "expectedParityBlob", r, shardLen);
+                    for (int i = 0; i < k; i++)
+                    {
+                        expected[i] = data[i];
+                    }
+
+                    for (int p = 0; p < r; p++)
+                    {
+                        expected[k + p] = parity[p];
+                    }
                 }
 
                 var shards = new byte[n][];
@@ -262,6 +265,87 @@ namespace Erasure16.Tests
             }
 
             Assert.True(cases > 0, "no reconstruct vectors found in manifest");
+        }
+
+        /// <summary>
+        /// Loads one part (data or parity) of a case's shards, in whichever layout of
+        /// SPEC.md section 8 it uses: a per-shard file list, or a single concatenated blob.
+        /// Exactly one must be present, so a case whose layout this reader did not
+        /// understand cannot be skipped silently.
+        /// </summary>
+        private static byte[][] LoadPart(
+            JsonElement caseEl, string listProperty, string blobProperty, int count, int shardLen)
+        {
+            bool hasList = caseEl.TryGetProperty(listProperty, out JsonElement list);
+            bool hasBlob = caseEl.TryGetProperty(blobProperty, out JsonElement blob);
+            Assert.True(hasList ^ hasBlob,
+                $"exactly one of {listProperty} / {blobProperty} must be present");
+
+            var shards = new byte[count][];
+            if (hasList)
+            {
+                var paths = ReadStringArray(list);
+                Assert.Equal(count, paths.Count);
+                for (int i = 0; i < count; i++)
+                {
+                    shards[i] = LoadBin(paths[i]);
+                    Assert.Equal(shardLen, shards[i].Length);
+                }
+
+                return shards;
+            }
+
+            byte[] bytes = LoadBin(blob.GetString());
+            Assert.Equal(count * shardLen, bytes.Length);
+            for (int i = 0; i < count; i++)
+            {
+                shards[i] = new byte[shardLen];
+                Buffer.BlockCopy(bytes, i * shardLen, shards[i], 0, shardLen);
+            }
+
+            return shards;
+        }
+
+        /// <summary>
+        /// A reconstruct case's present mask, from either the full <c>present</c> array or
+        /// the compact <c>missing</c> index list of SPEC.md section 8.1.
+        /// </summary>
+        private static bool[] PresentMask(JsonElement caseEl, int n)
+        {
+            bool hasPresent = caseEl.TryGetProperty("present", out JsonElement presentEl);
+            bool hasMissing = caseEl.TryGetProperty("missing", out JsonElement missingEl);
+            Assert.True(hasPresent ^ hasMissing, "exactly one of present / missing must be present");
+
+            var present = new bool[n];
+            if (hasPresent)
+            {
+                int i = 0;
+                foreach (JsonElement p in presentEl.EnumerateArray())
+                {
+                    Assert.True(i < n, "present mask is longer than N");
+                    present[i++] = p.GetBoolean();
+                }
+
+                Assert.Equal(n, i);
+                return present;
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                present[i] = true;
+            }
+
+            int previous = -1;
+            foreach (JsonElement m in missingEl.EnumerateArray())
+            {
+                int index = m.GetInt32();
+                Assert.True(index > previous, "missing indices must be strictly ascending");
+                Assert.True(index < n, "missing index is out of range");
+                present[index] = false;
+                previous = index;
+            }
+
+            return present;
         }
 
         private static List<string> ReadStringArray(JsonElement arr)

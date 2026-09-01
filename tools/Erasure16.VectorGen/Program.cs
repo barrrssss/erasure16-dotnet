@@ -28,7 +28,7 @@ namespace Erasure16.VectorGen
     internal static class Program
     {
         // Manifest schema version, so consumers can guard against format drift.
-        private const int ManifestVersion = 1;
+        private const int ManifestVersion = 2;
 
         private static int Main(string[] args)
         {
@@ -116,28 +116,48 @@ namespace Erasure16.VectorGen
             // Each encode case writes K data .bin files and R parity .bin files.
             // ---------------------------------------------------------------
 
-            // (K, R, shardLen, prngSeed, present-mask-or-null-for-no-reconstruct)
-            var specs = new (string Name, int K, int R, int Len, ulong Seed, bool[] Present)[]
+            // (K, R, shardLen, prngSeed, present-mask-or-null-for-no-reconstruct, compact)
+            //
+            // Compact cases store their shards as two concatenated blobs and name the
+            // absent indices instead of listing a full present mask (SPEC.md section 8.1).
+            // Everything else keeps the one-file-per-shard layout, which is the readable
+            // one at these sizes.
+            var specs = new (string Name, int K, int R, int Len, ulong Seed, bool[] Present, bool Compact)[]
             {
-                // K=4, R=2, len=8 — drop one data shard (index 0).
+                // K=4, R=2, len=8 - drop one data shard (index 0).
                 ("enc-k4-r2-len8", 4, 2, 8, 0x1111_1111_1111_1111UL,
-                    Mask(6, 0)),
+                    Mask(6, 0), false),
 
-                // K=2, R=3, len=16 — R > K; drop both data shards (0 and 1).
+                // K=2, R=3, len=16 - R > K; drop both data shards (0 and 1).
                 ("enc-k2-r3-len16", 2, 3, 16, 0x2222_2222_2222_2222UL,
-                    Mask(5, 0, 1)),
+                    Mask(5, 0, 1), false),
 
-                // K=1, R=1, len=32 — minimal K; drop the only data shard.
+                // K=1, R=1, len=32 - minimal K; drop the only data shard.
                 ("enc-k1-r1-len32", 1, 1, 32, 0x3333_3333_3333_3333UL,
-                    Mask(2, 0)),
+                    Mask(2, 0), false),
 
-                // K=32, R=8, len=64 — larger K; drop a mix of data + parity (8 total).
+                // K=32, R=8, len=64 - larger K; drop a mix of data + parity (8 total).
                 ("enc-k32-r8-len64", 32, 8, 64, 0x4444_4444_4444_4444UL,
-                    Mask(40, 0, 5, 10, 15, 20, 32, 36, 39)),
+                    Mask(40, 0, 5, 10, 15, 20, 32, 36, 39), false),
 
-                // K=3, R=0, len=24 — no parity output (encode produces no parity .bin).
+                // K=3, R=0, len=24 - no parity output (encode produces no parity .bin).
                 ("enc-k3-r0-len24", 3, 0, 24, 0x5555_5555_5555_5555UL,
-                    null),
+                    null, false),
+
+                // K=6410, R=1744, len=8 - a transport-scale configuration near the top of
+                // the working-set envelope a memory-bounded consumer can afford, and the
+                // only case above K=32. It is where the Cauchy construction is actually
+                // stressed: the generator matrix has 11.2 million entries and the field
+                // elements it indexes span most of GF(2^16), against 256 entries and a
+                // handful of elements at K=32. 512 shards are dropped, 401 of them data,
+                // so the E x E submatrix solve runs at a width no small case reaches.
+                //
+                // The shard length is deliberately short. Shards are combined word by
+                // word, so shard length is independent of everything a large K and R
+                // exercise, and 8 bytes keeps the committed blobs to 65 KB rather than
+                // the megabytes a transport-sized shard would cost.
+                ("enc-k6410-r1744-len8", 6410, 1744, 8, 0x6666_6666_6666_6666UL,
+                    DroppedMask(6410 + 1744, 512, 0x7777_7777_7777_7777UL), true),
             };
 
             foreach (var spec in specs)
@@ -160,33 +180,63 @@ namespace Erasure16.VectorGen
                 var rs = ReedSolomon16.Create(spec.K, spec.R);
                 rs.Encode(shards);
 
-                // Write data shard files.
+                // Write the shard files: one per shard, or two concatenated blobs for a
+                // compact case. At K=6410 the per-shard layout would be 8,154 files.
                 var dataFiles = new List<string>();
-                for (int i = 0; i < spec.K; i++)
-                {
-                    string rel = spec.Name + "-data-" + i.ToString("D2", CultureInfo.InvariantCulture) + ".bin";
-                    WriteBin(outDir, rel, shards[i], files);
-                    dataFiles.Add(rel);
-                }
-
-                // Write parity shard files (none when R == 0).
                 var parityFiles = new List<string>();
-                for (int p = 0; p < spec.R; p++)
+                string dataBlob = null;
+                string parityBlob = null;
+
+                if (spec.Compact)
                 {
-                    string rel = spec.Name + "-parity-" + p.ToString("D2", CultureInfo.InvariantCulture) + ".bin";
-                    WriteBin(outDir, rel, shards[spec.K + p], files);
-                    parityFiles.Add(rel);
+                    dataBlob = spec.Name + "-data.bin";
+                    WriteBin(outDir, dataBlob, Concat(shards, 0, spec.K, spec.Len), files);
+
+                    parityBlob = spec.Name + "-parity.bin";
+                    WriteBin(outDir, parityBlob, Concat(shards, spec.K, spec.R, spec.Len), files);
+                }
+                else
+                {
+                    for (int i = 0; i < spec.K; i++)
+                    {
+                        string rel = spec.Name + "-data-" + i.ToString("D2", CultureInfo.InvariantCulture) + ".bin";
+                        WriteBin(outDir, rel, shards[i], files);
+                        dataFiles.Add(rel);
+                    }
+
+                    // Parity shard files (none when R == 0).
+                    for (int p = 0; p < spec.R; p++)
+                    {
+                        string rel = spec.Name + "-parity-" + p.ToString("D2", CultureInfo.InvariantCulture) + ".bin";
+                        WriteBin(outDir, rel, shards[spec.K + p], files);
+                        parityFiles.Add(rel);
+                    }
                 }
 
-                encodeCases.Add(new
+                if (spec.Compact)
                 {
-                    name = spec.Name,
-                    k = spec.K,
-                    r = spec.R,
-                    shardLen = spec.Len,
-                    dataShards = dataFiles,
-                    parityShards = parityFiles,
-                });
+                    encodeCases.Add(new
+                    {
+                        name = spec.Name,
+                        k = spec.K,
+                        r = spec.R,
+                        shardLen = spec.Len,
+                        dataBlob,
+                        parityBlob,
+                    });
+                }
+                else
+                {
+                    encodeCases.Add(new
+                    {
+                        name = spec.Name,
+                        k = spec.K,
+                        r = spec.R,
+                        shardLen = spec.Len,
+                        dataShards = dataFiles,
+                        parityShards = parityFiles,
+                    });
+                }
 
                 // Reconstruct case (when a present-mask is supplied).
                 if (spec.Present != null)
@@ -244,20 +294,45 @@ namespace Erasure16.VectorGen
                     }
 
                     // The "expected" reconstructed set is just the full encoded set,
-                    // which we already wrote above as the data+parity files. Reference
-                    // them as the expected full output to avoid duplicate bytes on disk.
-                    var allFiles = new List<string>(dataFiles);
-                    allFiles.AddRange(parityFiles);
-
-                    reconstructCases.Add(new
+                    // which we already wrote above. Reference it as the expected full
+                    // output to avoid duplicate bytes on disk.
+                    if (spec.Compact)
                     {
-                        name = spec.Name + "-recon",
-                        k = spec.K,
-                        r = spec.R,
-                        shardLen = spec.Len,
-                        present = spec.Present,
-                        expectedShards = allFiles, // index order: data[0..K) then parity[0..R)
-                    });
+                        var missing = new List<int>();
+                        for (int i = 0; i < n; i++)
+                        {
+                            if (!spec.Present[i])
+                            {
+                                missing.Add(i);
+                            }
+                        }
+
+                        reconstructCases.Add(new
+                        {
+                            name = spec.Name + "-recon",
+                            k = spec.K,
+                            r = spec.R,
+                            shardLen = spec.Len,
+                            missing, // absent indices, ascending; every other shard is present
+                            expectedDataBlob = dataBlob,
+                            expectedParityBlob = parityBlob,
+                        });
+                    }
+                    else
+                    {
+                        var allFiles = new List<string>(dataFiles);
+                        allFiles.AddRange(parityFiles);
+
+                        reconstructCases.Add(new
+                        {
+                            name = spec.Name + "-recon",
+                            k = spec.K,
+                            r = spec.R,
+                            shardLen = spec.Len,
+                            present = spec.Present,
+                            expectedShards = allFiles, // index order: data[0..K) then parity[0..R)
+                        });
+                    }
                 }
             }
 
@@ -300,6 +375,50 @@ namespace Erasure16.VectorGen
             {
                 Console.WriteLine("  " + f.Path + "  (" + f.Length + " bytes)");
             }
+        }
+
+        /// <summary>
+        /// Concatenates <paramref name="count"/> equal-length shards starting at
+        /// <paramref name="from"/>, in index order - the blob layout a compact case uses.
+        /// </summary>
+        private static byte[] Concat(byte[][] shards, int from, int count, int shardLen)
+        {
+            var blob = new byte[count * shardLen];
+            for (int i = 0; i < count; i++)
+            {
+                Buffer.BlockCopy(shards[from + i], 0, blob, i * shardLen, shardLen);
+            }
+
+            return blob;
+        }
+
+        /// <summary>
+        /// A present mask over <paramref name="n"/> shards with <paramref name="count"/> of
+        /// them dropped, chosen from a fixed PRNG seed. Used where naming the dropped
+        /// indices by hand would be unreadable; the chosen indices are recorded in the
+        /// manifest, so no consumer has to reproduce this draw.
+        /// </summary>
+        private static bool[] DroppedMask(int n, int count, ulong seed)
+        {
+            var present = new bool[n];
+            for (int i = 0; i < n; i++)
+            {
+                present[i] = true;
+            }
+
+            var prng = new SplitMix64(seed);
+            int dropped = 0;
+            while (dropped < count)
+            {
+                int index = (int)(prng.Next() % (ulong)n);
+                if (present[index])
+                {
+                    present[index] = false;
+                    dropped++;
+                }
+            }
+
+            return present;
         }
 
         private static bool[] Mask(int n, params int[] dropped)
