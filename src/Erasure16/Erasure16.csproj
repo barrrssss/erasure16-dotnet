@@ -5,7 +5,7 @@
     <RootNamespace>Erasure16</RootNamespace>
     <AssemblyName>Erasure16</AssemblyName>
     <PackageId>Erasure16</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Authors>barrrssss</Authors>
     <Title>Erasure16</Title>
     <LangVersion>latest</LangVersion>

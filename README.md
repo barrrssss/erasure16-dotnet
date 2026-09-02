@@ -13,13 +13,13 @@ The normative contract is [`SPEC.md`](external/erasure16-spec/SPEC.md) in the
 `erasure16-spec` repository (included here as a submodule). This implementation follows
 it exactly and is verified byte-for-byte against the committed conformance vectors.
 
-Current package version: **0.1.0**. It implements specification version **0.1.0**.
+Current package version: **0.1.1**. It implements specification version **0.1.1**.
 See [`CHANGELOG.md`](CHANGELOG.md) for release history.
 
 After the first NuGet release, install it with:
 
 ```sh
-dotnet add package Erasure16 --version 0.1.0
+dotnet add package Erasure16 --version 0.1.1
 ```
 
 ## Layout

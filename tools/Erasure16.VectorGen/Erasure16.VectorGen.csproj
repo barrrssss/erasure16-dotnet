@@ -7,6 +7,10 @@
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Internal generator tool. Never a NuGet package: a solution-wide `dotnet pack`
+         would otherwise emit Erasure16.VectorGen.1.0.0 with default metadata, and a
+         release that pushed *.nupkg would publish it. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
